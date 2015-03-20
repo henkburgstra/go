@@ -13,6 +13,8 @@ func (a *App) Name() string {
 	return a.name
 }
 
+func (a *App) RegisterService()
+
 var (
 	apps map[string]*App
 )
