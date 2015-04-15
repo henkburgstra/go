@@ -5,20 +5,63 @@ import (
 	"strconv"
 )
 
-type Value struct {
-	Value interface{}
+type FieldValue struct {
+	value interface{}
 }
 
-func (v *Value) Get() interface{} {
-	return v.Value
+func (v *FieldValue) Get() interface{} {
+	return v.value
 }
 
-func (v *Value) Addr() *interface{} {
-	return &v.Value
+func (v *FieldValue) Addr() *interface{} {
+	return &v.value
 }
 
-func (v *Value) Set(value interface{}) {
-	v.Value = value
+func (v *FieldValue) SetAddr(value interface{}) {
+	switch s := value.(type) {
+	case *string, *int, *int8, *int16, *int32, *int64, *[]byte:
+		v.value = value
+	case string, int, int8, int16, int32, int64, []byte:
+		v.value = s
+	}
+}
+
+func (v *FieldValue) Set(value interface{}) {
+	switch value.(type) {
+	case int:
+		*v.value.(*int) = value.(int)
+	case int8:
+		*v.value.(*int8) = value.(int8)
+	case int16:
+		*v.value.(*int16) = value.(int16)
+	case int32:
+		*v.value.(*int32) = value.(int32)
+	case int64:
+		*v.value.(*int64) = value.(int64)
+	case *int:
+		*v.value.(*int) = *value.(*int)
+	case *int8:
+		*v.value.(*int8) = *value.(*int8)
+	case *int16:
+		*v.value.(*int16) = *value.(*int16)
+	case *int32:
+		*v.value.(*int32) = *value.(*int32)
+	case *int64:
+		*v.value.(*int64) = *value.(*int64)
+	case string:
+		x, ok := v.value.(*string)
+		if ok {
+			*x = value.(string)
+		} else {
+			v.value = value
+		}
+	case *string:
+		*v.value.(*string) = *value.(*string)
+	case []byte:
+		*v.value.(*[]byte) = value.([]byte)
+	case *[]byte:
+		*v.value.(*[]byte) = *value.(*[]byte)
+	}
 }
 
 func StrToInt(s string) int64 {
@@ -28,16 +71,16 @@ func StrToInt(s string) int64 {
 	return 0
 }
 
-func (v *Value) IsNil() bool {
-	switch v.Value.(type) {
+func (v *FieldValue) IsNil() bool {
+	switch v.value.(type) {
 	case nil:
 		return true
 	}
 	return false
 }
 
-func (v *Value) Int() int64 {
-	switch value := v.Value.(type) {
+func (v *FieldValue) Int() int64 {
+	switch value := v.value.(type) {
 	case int:
 		return int64(value)
 	case int8:
@@ -70,8 +113,8 @@ func (v *Value) Int() int64 {
 	return 0
 }
 
-func (v *Value) String() string {
-	switch value := v.Value.(type) {
+func (v *FieldValue) String() string {
+	switch value := v.value.(type) {
 	case int, int8, int16, int32, int64:
 		return fmt.Sprintf("%d", value)
 	case *int:
@@ -98,4 +141,4 @@ func (v *Value) String() string {
 	return ""
 }
 
-type FieldData map[string]*Value
+type FieldData map[string]*FieldValue

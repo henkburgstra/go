@@ -7,7 +7,7 @@ import (
 )
 
 func makeEngine() *Engine {
-	return &Engine{Driver: "mysql", User: "root", Database: "gestel2"}
+	return &Engine{Driver: "mysql", User: "root", Password: "borland", Database: "amersfoort2"}
 }
 
 func TestConnect(t *testing.T) {
@@ -31,9 +31,9 @@ func TestTableNames(t *testing.T) {
 	if len(names) == 0 {
 		t.Errorf("TestTableNames(): length is zero.")
 	}
-	for _, name := range names {
-		fmt.Println(name)
-	}
+	//	for _, name := range names {
+	//		fmt.Println(name)
+	//	}
 }
 
 func TestTableStructure(t *testing.T) {
@@ -48,15 +48,24 @@ func TestTableStructure(t *testing.T) {
 	if len(names) == 0 {
 		t.Errorf("TestTableNames(): length is zero.")
 	}
-	fmt.Println()
-	for _, name := range names {
-		ts := engine.TableStructure(name)
-		fmt.Println(name)
-		fmt.Println("---------------------------------------------")
-		for key, value := range ts.Fields() {
-			fmt.Println(fmt.Sprintf("%s: %s", key, value.String()))
-		}
-		fmt.Println()
+}
+
+func TestRef(t *testing.T) {
+	engine := makeEngine()
+	db, err := engine.Connect()
+	if err != nil {
+		t.Fatalf("TestRef(): %s", err.Error())
+	}
+	defer db.Close()
+	registry := makeRegistry(engine)
+	patient := registry.Query("patient").Get("PJJG-AA1001")
+	huisarts, ok := patient.Ref("huisarts")
+
+	if !ok {
+		t.Errorf("TestRef(): huisarts niet gevonden")
+	}
+	for _, name := range huisarts.FieldNames() {
+		fmt.Printf("huisarts veldnaam: %s\n", name)
 	}
 
 }

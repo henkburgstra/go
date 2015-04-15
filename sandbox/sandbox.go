@@ -30,8 +30,74 @@ func (v *Value) Addr() *interface{} {
 	return &v.Value
 }
 
+func (v *Value) SetAddr(value interface{}) {
+	switch value.(type) {
+	default:
+		fmt.Println("huh??")
+	case *string, *int, *int8, *int16, *int32, *int64:
+		v.Value = value
+	}
+}
+
 func (v *Value) Set(value interface{}) {
-	v.Value = value
+	switch value.(type) {
+	default:
+		fmt.Println("huh??")
+	case int, int8, int16, int32, int64:
+		fmt.Println("int-achtig %d", value)
+	case *int:
+		fmt.Println("*int %d", *value.(*int))
+	case *int8:
+		fmt.Println("*int8 %d", *value.(*int8))
+	case *int16:
+		fmt.Println("*int16 %d", *value.(*int16))
+	case *int32:
+		fmt.Println("*int32 %d", *value.(*int32))
+	case *int64:
+		fmt.Println("*int64 %d", *value.(*int64))
+	case string:
+		*v.Value.(*string) = value.(string)
+		fmt.Println("--- string:", value)
+	case *string:
+		*v.Value.(*string) = *value.(*string)
+		fmt.Println("--- *string:", *value.(*string))
+	case []byte:
+		fmt.Println("[]byte %s", string(value.([]byte)))
+	case *[]byte:
+		fmt.Println("*[]byte %s", string(*value.(*[]byte)))
+	case *interface{}:
+		*v.Value.(*interface{}) = *value.(*interface{})
+	case nil:
+		fmt.Println("NULL")
+	}
+}
+
+func (v *Value) String() string {
+	switch value := v.Value.(type) {
+	case int, int8, int16, int32, int64:
+		return fmt.Sprintf("%d", value)
+	case *int:
+		return fmt.Sprintf("%d", *value)
+	case *int8:
+		return fmt.Sprintf("%d", *value)
+	case *int16:
+		return fmt.Sprintf("%d", *value)
+	case *int32:
+		return fmt.Sprintf("%d", *value)
+	case *int64:
+		return fmt.Sprintf("%d", *value)
+	case string:
+		return value
+	case *string:
+		return *value
+	case []byte:
+		return string(value)
+	case *[]byte:
+		return string(*value)
+	case nil:
+		return "NULL"
+	}
+	return ""
 }
 
 type Test struct {
@@ -39,7 +105,99 @@ type Test struct {
 	Naam2 *string
 }
 
+func deelGeheugen1() {
+	fmt.Println("t := new(Test)")
+	t := new(Test)
+	fmt.Println(`t.Naam = "Naam"`)
+	t.Naam = "Naam"
+	fmt.Println("a := &t.Naam")
+	a := &t.Naam
+	fmt.Println("*a:", *a)
+	fmt.Println("t.Naam:", t.Naam)
+	fmt.Println(`*a = "Andere naam"`)
+	*a = "Andere naam"
+	fmt.Println("t.Naam:", t.Naam)
+	fmt.Println(`t.Naam = "Nog een andere naam"`)
+	t.Naam = "Nog een andere naam"
+	fmt.Println("*a:", *a)
+	fmt.Println("--------------------------")
+}
+
+func deelGeheugen2() {
+	fmt.Println("t := new(Test)")
+	t := new(Test)
+	fmt.Println(`t.Naam = "Naam"`)
+	t.Naam = "Naam"
+	fmt.Println(`v = new(Value)`)
+	v := new(Value)
+	fmt.Println(`v.Value := &t.Naam`)
+	v.Value = &t.Naam
+	fmt.Println("*v.Value.(*string):", *v.Value.(*string))
+	fmt.Println("t.Naam:", t.Naam)
+	fmt.Println(`*v.Value.(*string) = "Andere naam"`)
+	*v.Value.(*string) = "Andere naam"
+	fmt.Println("t.Naam:", t.Naam)
+	fmt.Println(`t.Naam = "Nog een andere naam"`)
+	t.Naam = "Nog een andere naam"
+	fmt.Println("*v.Value.(*string):", *v.Value.(*string))
+	fmt.Println("--------------------------")
+}
+
+func deelGeheugen3() {
+	fmt.Println("t := new(Test)")
+	t := new(Test)
+	fmt.Println(`t.Naam = "Naam"`)
+	t.Naam = "Naam"
+	fmt.Println(`v = new(Value)`)
+	v := new(Value)
+	fmt.Println(`v.Set(&t.Naam)`)
+	v.SetAddr(&t.Naam)
+	fmt.Println("*v.Value.(*string):", *v.Value.(*string))
+	fmt.Println("t.Naam:", t.Naam)
+	fmt.Println(`v.Set("Andere naam")`)
+	v.Set("Andere naam")
+	fmt.Println("t.Naam:", t.Naam)
+	fmt.Println(`t.Naam = "Nog een andere naam"`)
+	t.Naam = "Nog een andere naam"
+	fmt.Println("*v.Value.(*string):", *v.Value.(*string))
+	fmt.Println("--------------------------")
+}
+
+func deelGeheugen4() {
+	fmt.Println("t := new(Test)")
+	t := new(Test)
+
+	e := reflect.ValueOf(t).Elem()
+	field := e.FieldByName("Naam")
+	//	up := (*string)(unsafe.Pointer(field.UnsafeAddr()))
+
+	v := new(Value)
+	//	v.SetAddr(up)
+	v.SetAddr((*string)(unsafe.Pointer(field.UnsafeAddr())))
+
+	t.Naam = "xxx"
+	fmt.Println(v.String())
+	//fmt.Println(*(*string)(v.Get().(*string)))
+
+	v.Set("yyy")
+	fmt.Println(t.Naam)
+
+	x := "blub"
+	v.Set(&x)
+
+	//var p int64 = 256
+	//	var q *int32
+	//	r := (int32)(p)
+	//q = &r
+
+	fmt.Println(t.Naam)
+}
+
 func deelGeheugen() {
+	deelGeheugen1()
+	deelGeheugen2()
+	deelGeheugen3()
+	deelGeheugen4()
 	// Deel geheugen tussen variabelen en struct velden
 	t := new(Test)
 	t.Naam = "test"
@@ -134,7 +292,30 @@ func instantieer(v interface{}) {
 	fmt.Println(instance)
 }
 
+type Cond map[string]map[string]interface{}
+
+type Connective struct {
+	Operator string
+	Operands interface{}
+}
+
+func And(ops ...interface{}) Connective {
+	return Connective{"AND", ops}
+}
+
+func Or(ops ...interface{}) Connective {
+	return Connective{"OR", ops}
+}
+
+func Filter(f interface{}) string {
+	// Filter verwacht een Cond of een Connective
+	return ""
+}
+
 func main() {
+	Filter(Or(And(Cond{
+		"patient": {"key": "ACTB-09D0034"},
+		"relatie": {"verwijsfunctie": "huisarts"}})))
 	deelGeheugen()
 	var z T1
 	instantieer(z)
@@ -145,7 +326,7 @@ func main() {
 	fmt.Println(x.(*T1).i)
 	y.print()
 
-	db, err := sql.Open("mysql", "root:@/gestel2")
+	db, err := sql.Open("mysql", "root:borland@/amersfoort2")
 	if err != nil {
 		fmt.Println("fout bij het maken van een database verbinding.")
 		return
