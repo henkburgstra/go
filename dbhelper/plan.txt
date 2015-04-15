@@ -1,0 +1,87 @@
+constraints worden uit de database gelezen met de volgende (mysql) query
+
+USE INFORMATION_SCHEMA;
+SELECT rc.CONSTRAINT_NAME, rc.TABLE_NAME, kc.COLUMN_NAME, 
+rc.REFERENCED_TABLE_NAME, kc.REFERENCED_COLUMN_NAME, 
+rc.UPDATE_RULE, rc.DELETE_RULE 
+FROM REFERENTIAL_CONSTRAINTS AS rc
+JOIN KEY_COLUMN_USAGE AS kc
+ON rc.CONSTRAINT_NAME = kc.CONSTRAINT_NAME
+WHERE rc.CONSTRAINT_SCHEMA = 'amersfoort2'
+ORDER BY rc.TABLE_NAME, kc.COLUMN_NAME
+
+(misschien kan USE INFORMATION_SCHEMA weggelaten worden)
+
+Hierbij is TABLE_NAME de child table waar de foreign key constraint op zit.
+COLUMN_NAME is de foreign key 
+REFERENCED_TABLE_NAME is de master table
+REFERENCED_COLUMN_NAME is de primary key in de master table
+DELETE RULE 'CASCADE' betekent dat bij het verwijderen van een record
+uit de master table de gerelateerde records uit de referring/child table
+worden verwijderd.
+DELETE RULE 'RESTRICT' betekent dat een rij niet uit de referred/master table 
+kan worden verwijderd zolang er nog gerelateerde records in de child table zijn.
+
+Voorbeeld OpenAC, foreign key constraint gedefinieerd in tabel behandeling_data:
+
+TABLE_NAME        COLUMN_NAME  REFERENCED_TABLE_NAME  REFERENCED_COLUMN_NAME  DELETE_RULE
+----------        -----------  ---------------------  ----------------------  -----------
+behandeling_data  patient_key  patient_data           patient_key             CASCADE
+
+Als een patient wordt verwijderd, dan worden automatisch alle behandelingen verwijderd
+die bij deze patient horen.
+
+ ---------  1           *  -------------
+| patient |---------------| behandeling |
+ ---------                 -------------
+
+Bij het modelleren is er een one-to-many relatie van patient naar behandeling:
+bij 1 patient horen 0 of meerdere behandelingen.
+Bij het modelleren leg je de relatie vast bij patient, maar de foreign key
+constraint is gedefinieerd bij behandeling. Net andersom dus.
+
+De vraag is hoe we foreign key constraints uit de database moeten vertalen naar
+relaties tussen modellen.
+
+Database:
+Behandeling -- fk --> Patient
+
+Relationeel model:
+Patient:Behandelingen
+
+Mogelijke oplossing:
+Method Ref() bij een model:
+func (m IModel) Ref(vertaalde_fk_naam string) IModel
+Patient.Ref("huisarts")
+Heeft Patient een foreign key met de naam patient_huisarts?
+Ja -> Naar welk model refereert de foreign key? ->
+"relatie" -> registry.Query("relatie").Get(<patient_huisarts>)
+
+Syntactic sugar: Patient.Huisarts gedefinieerd in het model.
+!! Patient.Fields("huisarts") moet ook kunnen worden gebruikt.
+
+func (m IModel) BackRef(modelnaam string) []IModel
+Patient.BackRef("behandeling")
+Heef Behandeling een foreign key naar patient?
+registry.Query("behandeling").FromSql(`SELECT * FROM behandeling_data WHERE patient_key = ?`, m.Fields(<key>))
+
+Syntactic sugar: Patient.Behandelingen gedefinieerd in het model
+!! Patient.Fields("behandelingen") moet ook kunnen worden gebruikt.
+
+
+Er is denk ik geen mogelijkheid dat huisarts automatisch kan worden afgeleid uit een forein key constraint?
+Toch wel. Patient:Huisarts is een Many-to-One relatie. De foreign key heet patient_huisarts, 
+dus de veldnaam in het model is Patient.Huisarts of Patient.Fields("huisarts")
+
+BELANGRIJK
+----------
+Bij een many-to-one relatie moet zowel de foreign key als het model beschikbaar zijn. In het geval van
+Patient:Huisarts en is de foreign key beschikbaar in de Fields() array onder de niet vertaalde naam: patient_huisarts.
+Afspraak: foreign key velden moeten met de oorspronkelijke veldnaam aan de veldarray worden toegevoegd
+en bij het modelleren moet de naam van de relatie anders zijn dan de veldnaam.
+
+MANY-TO-ONE
+-----------
+Patient.Ref("huisarts")
+
+
