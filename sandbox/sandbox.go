@@ -5,6 +5,7 @@ import (
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"reflect"
+	"strings"
 	"unsafe"
 )
 
@@ -296,7 +297,7 @@ type Cond map[string]map[string]interface{}
 
 type Connective struct {
 	Operator string
-	Operands interface{}
+	Operands []interface{}
 }
 
 func And(ops ...interface{}) Connective {
@@ -307,15 +308,74 @@ func Or(ops ...interface{}) Connective {
 	return Connective{"OR", ops}
 }
 
+func processConnective(con Connective) string {
+	args := make([]string, 0)
+	//	values := make([]interface{}, 0)
+
+	for _, op := range con.Operands {
+		switch c := op.(type) {
+		case Connective:
+			r := processConnective(c)
+			if r != "" {
+				args = append(args, r)
+			}
+		case Cond:
+			r := processCondition(c, con.Operator)
+			if r != "" {
+				args = append(args, r)
+			}
+		}
+	}
+	return fmt.Sprintf("(%s)", strings.Join(args, fmt.Sprintf(" %s ", con.Operator)))
+}
+
+func processCondition(c Cond, op string) string {
+	args := make([]string, 0)
+	values := make([]interface{}, 0)
+
+	for model, conds := range c {
+		for field, value := range conds {
+			args = append(args, fmt.Sprintf("%s.%s = ?", model, field))
+			values = append(values, value)
+		}
+	}
+
+	return strings.Join(args, fmt.Sprintf(" %s ", op))
+}
+
 func Filter(f interface{}) string {
 	// Filter verwacht een Cond of een Connective
-	return ""
+	switch c := f.(type) {
+	default:
+		return ""
+	case Cond:
+		return processCondition(c, "AND")
+	case Connective:
+		return processConnective(c)
+	}
+}
+
+func testSlices(s *[]string, c int) {
+	for i := 1; i < 5; i++ {
+		*s = append(*s, fmt.Sprintf("mySlice %d", c*i))
+	}
 }
 
 func main() {
-	Filter(Or(And(Cond{
+	mySlice := make([]string, 0)
+	for i := 1; i < 5; i++ {
+		testSlices(&mySlice, i)
+	}
+	for _, sl := range mySlice {
+		fmt.Println(sl)
+	}
+	cond1 := Cond{
 		"patient": {"key": "ACTB-09D0034"},
-		"relatie": {"verwijsfunctie": "huisarts"}})))
+		"relatie": {"verwijsfunctie": "huisarts"}}
+	cond2 := Cond{
+		"patient": {"key": "ACTB-09D0034"},
+		"relatie": {"verwijsfunctie": "huisarts"}}
+	fmt.Println(Filter(Or(And(cond1), And(cond2))))
 	deelGeheugen()
 	var z T1
 	instantieer(z)
