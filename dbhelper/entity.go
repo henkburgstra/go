@@ -2,6 +2,7 @@ package dbhelper
 
 import (
 	"fmt"
+	"strings"
 )
 
 type NoKeyError struct {
@@ -57,6 +58,17 @@ func (e *Entity) KeyCount() int {
 	return count
 }
 
+func (e *Entity) Col(name string) *Selectable {
+	if e.registry == nil {
+		fmt.Println("entity.Col(), registry == nil")
+	}
+	fmt.Println("entity.Col(), entity.Name: ", e.Name)
+	model := e.registry.TrimTableAffixes(e.Name)
+	fmt.Println("entity.Col(), model: ", model)
+	return &Selectable{Entity: e,
+		Field: e.TranslateModelField(e.registry.TrimTableAffixes(e.Name), name)}
+}
+
 func (e *Entity) Key() *EntityField {
 	for _, field := range e.Fields {
 		if field.Key {
@@ -83,4 +95,17 @@ func (e *Entity) Keys() []*EntityField {
 		}
 	}
 	return keyFields
+}
+
+func (e *Entity) TranslateModelField(model, f string) string {
+	if e.registry == nil {
+		return f
+	}
+	fieldPrefix := strings.Replace(e.registry.FieldPrefix(), "{model}", model, 1)
+	for name, _ := range e.Fields {
+		if f == strings.TrimPrefix(name, fieldPrefix) {
+			return name
+		}
+	}
+	return f
 }

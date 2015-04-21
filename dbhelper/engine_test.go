@@ -69,3 +69,27 @@ func TestRef(t *testing.T) {
 	}
 
 }
+
+func TestBackRef(t *testing.T) {
+	engine := makeEngine()
+	db, err := engine.Connect()
+	if err != nil {
+		t.Fatalf("TestRef(): %s", err.Error())
+	}
+	defer db.Close()
+	registry := makeRegistry(engine)
+	registry.RegisterModel("patient", NewPatient)
+	huisarts := registry.Query("relatie").Get("PJJG-VW0800")
+	gevonden := false
+
+	q := huisarts.BackRef("patient", "patient_huisarts")
+	fmt.Println(q.Sql())
+	for _, m := range q.All() {
+		gevonden = true
+		patient := m.(*Patient)
+		fmt.Println("TestBackRef(), patient:", patient.Achternaam)
+	}
+	if !gevonden {
+		t.Errorf("TestBackRef(): geen patienten gevonden bij huisarts.")
+	}
+}

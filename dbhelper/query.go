@@ -20,24 +20,77 @@ func Or(ops ...interface{}) Connective {
 	return Connective{"OR", ops}
 }
 
-type Query struct {
-	modelName string
-	registry  *Registry
-	sql       string
-	filter    interface{}
-	params    []interface{}
+type SqlParam struct {
+	Operator string
+	Value    interface{}
+	Values   []interface{}
 }
 
-func NewQuery(modelName string, registry *Registry) *Query {
+type Selectable struct {
+	Entity *Entity
+	Field  string
+	Param  SqlParam
+}
+
+func (e *Selectable) Eq(value interface{}) *Selectable {
+	e.Param = SqlParam{Operator: "=", Value: value}
+	return e
+}
+
+func (e *Selectable) Ne(value interface{}) *Selectable {
+	e.Param = SqlParam{Operator: "!=", Value: value}
+	return e
+}
+
+func (e *Selectable) Gt(value interface{}) *Selectable {
+	e.Param = SqlParam{Operator: ">", Value: value}
+	return e
+}
+
+func (e *Selectable) Gte(value interface{}) *Selectable {
+	e.Param = SqlParam{Operator: ">=", Value: value}
+	return e
+}
+
+func (e *Selectable) Lt(value interface{}) *Selectable {
+	e.Param = SqlParam{Operator: "<", Value: value}
+	return e
+}
+
+func (e *Selectable) Lte(value interface{}) *Selectable {
+	e.Param = SqlParam{Operator: "<=", Value: value}
+	return e
+}
+
+func (e *Selectable) In(values []interface{}) *Selectable {
+	e.Param = SqlParam{Operator: "IN", Values: values}
+	return e
+}
+
+func (e *Selectable) Nin(values []interface{}) *Selectable {
+	e.Param = SqlParam{Operator: "NOT IN", Values: values}
+	return e
+}
+
+type Query struct {
+	model    string
+	registry *Registry
+	sql      string
+	filter   []interface{}
+	params   []interface{}
+}
+
+func NewQuery(model string, registry *Registry) *Query {
 	q := new(Query)
-	q.modelName = modelName
+	q.model = model
 	q.registry = registry
 	q.params = make([]interface{}, 0)
 	return q
 }
 
-func (q *Query) Filter(f interface{}) {
+func (q *Query) Filter(f ...interface{}) *Query {
 	q.filter = f
+	return q
 }
 
 func (q *Query) processConnective(con Connective) string {
@@ -50,8 +103,8 @@ func (q *Query) processConnective(con Connective) string {
 			if r != "" {
 				args = append(args, r)
 			}
-		case Cond:
-			r := q.processCondition(c, con.Operator)
+		case *Selectable:
+			r := q.processSelectable(c)
 			if r != "" {
 				args = append(args, r)
 			}
@@ -60,28 +113,40 @@ func (q *Query) processConnective(con Connective) string {
 	return fmt.Sprintf("(%s)", strings.Join(args, fmt.Sprintf(" %s ", con.Operator)))
 }
 
-func (q *Query) processCondition(c Cond, op string) string {
-	args := make([]string, 0)
-
-	for model, conds := range c {
-		for field, value := range conds {
-			args = append(args, fmt.Sprintf("%s.%s = ?", model, field))
-			q.params = append(q.params, value)
+func (q *Query) processSelectable(s *Selectable) string {
+	if s.Param.Operator == "IN" || s.Param.Operator == "NOT IN" {
+		l := make([]string, 0)
+		for _, v := range s.Param.Values {
+			l = append(l, "?")
+			q.params = append(q.params, v)
 		}
+		return fmt.Sprintf("%s.%s %s (%s)", s.Entity.Name, s.Field, s.Param.Operator, strings.Join(l, ", "))
+	} else {
+		fmt.Println("processSelectable(), append param: ", s.Param.Value)
+		q.params = append(q.params, s.Param.Value)
+		return fmt.Sprintf("%s.%s %s ?", s.Entity.Name, s.Field, s.Param.Operator)
 	}
-
-	return strings.Join(args, fmt.Sprintf(" %s ", op))
 }
 
 func (q *Query) applyFilter() string {
-	switch c := q.filter.(type) {
-	default:
-		return ""
-	case Cond:
-		return q.processCondition(c, "AND")
-	case Connective:
-		return q.processConnective(c)
+	c := make([]string, 0)
+
+	for _, f := range q.filter {
+		switch e := f.(type) {
+		case Connective:
+			r := q.processConnective(e)
+			if r != "" {
+				c = append(c, r)
+			}
+		case *Selectable:
+			r := q.processSelectable(e)
+			if r != "" {
+				c = append(c, r)
+			}
+		}
 	}
+
+	return strings.Join(c, " AND ")
 }
 
 func (q *Query) Join() *Query {
@@ -89,7 +154,7 @@ func (q *Query) Join() *Query {
 }
 
 func (q *Query) Get(keyValue interface{}) IModel {
-	entity := q.registry.Entity(q.modelName)
+	entity := q.registry.Entity(q.model)
 	if entity == nil {
 		fmt.Println("entity == nil")
 		return nil
@@ -99,7 +164,7 @@ func (q *Query) Get(keyValue interface{}) IModel {
 		fmt.Println("key == nil")
 		return nil
 	}
-	model := q.registry.Model(q.modelName)(q.modelName)
+	model := q.registry.Model(q.model)(q.model)
 	model.SetOwner(model)
 	model.SetRegistry(q.registry)
 
@@ -141,7 +206,7 @@ func (q *Query) Sql() string {
 	if q.sql != "" {
 		return q.sql
 	}
-	e := q.registry.Entity(q.modelName)
+	e := q.registry.Entity(q.model)
 	if e == nil {
 		return ""
 	}
@@ -149,45 +214,53 @@ func (q *Query) Sql() string {
 		FROM %s`, e.Name)
 	f := q.applyFilter()
 	if f != "" {
-		sql += fmt.Sprintf("\n%s", f)
+		sql += fmt.Sprintf("\nWHERE %s", f)
 	}
+
+	q.sql = sql
 
 	return sql
 }
 
 func (q *Query) All() []IModel {
 	models := make([]IModel, 0)
-	entity := q.registry.Entity(q.modelName)
+	entity := q.registry.Entity(q.model)
 	if entity == nil {
-		fmt.Println("entity == nil")
+		fmt.Println("Query.All(), entity == nil")
 		return models
 	}
 	key := entity.Key()
 	if key == nil {
-		fmt.Println("key == nil")
+		fmt.Println("Query.All(), key == nil")
 		return models
 	}
 
-	fieldPrefix := strings.Replace(q.registry.FieldPrefix(), "{model}", q.modelName, 1)
+	fieldPrefix := strings.Replace(q.registry.FieldPrefix(), "{model}", q.model, 1)
 	keyName := strings.TrimPrefix(key.Name, fieldPrefix)
 
 	db, err := q.registry.Db()
 	if err != nil {
 		// TODO: log err
+		fmt.Println("Query.All(), db err")
 		return models
 	}
+	for i, param := range q.params {
+		fmt.Println("Query.All() param ", i, ": ", param)
+	}
+	fmt.Println("Query.All() lengte params: ", len(q.params))
 	rows, err := db.Query(q.Sql(), q.params...)
 	if err != nil {
 		// TODO: log err
+		fmt.Println("Query.All(), query error: ", err.Error())
 		return models
 	}
 	defer rows.Close()
 
 	var lastKey string
-	modelConstructor := q.registry.Model(q.modelName)
+	modelConstructor := q.registry.Model(q.model)
 
 	for rows.Next() {
-		model := modelConstructor(q.modelName)
+		model := modelConstructor(q.model)
 		model.SetOwner(model)
 		model.SetRegistry(q.registry)
 		model.Scan(rows)

@@ -39,6 +39,7 @@ func (r *Registry) LoadEntities() {
 	for _, name := range engine.TableNames() {
 		entity := engine.TableStructure(name)
 		r.entities[r.TrimTableAffixes(name)] = entity
+		entity.registry = r
 	}
 	engine.LoadRelationships(r)
 }

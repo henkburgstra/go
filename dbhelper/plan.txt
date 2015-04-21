@@ -85,3 +85,73 @@ MANY-TO-ONE
 Patient.Ref("huisarts")
 
 
+
+The API syntax isn't that special. The ArangoDB Query Builder (aqb on npm) for example is even more straightforward (no functions needed):
+    a.for("album").in("catalog").filter(
+      a.eq("album.details.media_type_id", 2)
+    ).return("album")
+Or in plain AQL (ArangoDB's query language):
+    FOR album IN catalog
+    FILTER album.details.media_type_id == 2
+    RETURN album
+The "map" in the second example is simpler, too:
+   ….return({artist: 'album.vendor.name'})
+Or in plain AQL:
+   … RETURN {artist: album.vendor.name}
+Also, it doesn't really need drivers because the DB uses a REST API that works with any HTTP client.
+That said, the change feeds are pretty neat and RethinkDB is still a pretty exciting project to follow.
+(Full disclosure: I wrote the ArangoDB Query Builder without any prior exposure to ReQL, so I may be biased)
+reply
+	
+coffeemug 12 hours ago
+
+You don't actually need to use functions in ReQL either (although you can). For example
+  r.table('users').filter(function(row) {
+    return row('age').gt(30);
+  })
+Could be expressed as:
+  r.table('users').filter(r.row('age').gt(30))
+That being said aqb looks pretty cool and quite similar to ReQL.
+reply
+	
+pluma 10 hours ago
+
+Neat. I actually prefer the "infix" style for operators (i.e. having the methods on the values instead of on the helper) and I'll see whether I can adjust AQB to support that.
+reply
+	
+mmgutz 10 hours ago
+
+Postgres 9.3+ is fairly straight-forward too. Here is go + github.com/mgutz/dat
+    // one trip to database using subqueries and Postgres' JSON functions
+    con.SelectDoc("id", "user_name", "avatar").
+        HasMany("recent_comments", `SELECT id, title FROM comments WHERE id = users.id LIMIT 10`).
+        HasMany("recent_posts", `SELECT id, title FROM posts WHERE author_id = users.id LIMIT 10`).
+        HasOne("account", `SELECT balance FROM accounts WHERE user_id = users.id`).
+        From("users").
+        Where("id = $1", 4).
+        QueryStruct(&obj) // obj must be agreeable with json.Unmarshal()
+results in
+    {
+        "id": 4,
+        "user_name": "mario",
+        "avatar": "https://imgur.com/a23x.jpg",
+        "recent_comments": [{"id": 1, "title": "..."}],
+        "recent_posts": [{"id": 1, "title": "..."}],
+        "account": {
+            "balance": 42.00
+        }
+    }
+reply
+
+r.table('users').filter(r.row('age').gt(30))   // gt, gte, lt, lte, eq, ne, in, nin
+
+type Selectable struct {
+	Entity Entity
+	Field string
+	Param SqlParam
+}
+
+type SqlParam struct {
+	Operator string // "=", "<", ...
+	Value interface{}
+}

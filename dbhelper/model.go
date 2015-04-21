@@ -122,6 +122,25 @@ func (m *Model) SetOwner(owner IModel) {
 	m.owner = owner
 }
 
+func (m *Model) Key() *FieldValue {
+	r := m.Registry()
+	if r == nil {
+		return nil
+	}
+	e := m.Entity()
+	if e == nil {
+		return nil
+	}
+	key := e.Key()
+	if key == nil {
+		return nil
+	}
+
+	fieldPrefix := strings.Replace(r.FieldPrefix(), "{model}", m.Name(), 1)
+	keyName := strings.TrimPrefix(key.Name, fieldPrefix)
+	return m.Field(keyName)
+}
+
 // Ref returns the model that foreign key fk refers to.
 func (m *Model) Ref(fk string) (IModel, bool) {
 	entity := m.Entity()
@@ -148,20 +167,27 @@ func (m *Model) Ref(fk string) (IModel, bool) {
 
 // BackRef returns a Query instance representing all records
 // of br referring to m.
-// Unless fk is provided, m's primary key is used as foreign key.
-func (m *Model) BackRef(br string, fk ...string) *Query {
+// Unless fks is provided, m's primary key is used as foreign key.
+func (m *Model) BackRef(br string, fks ...string) *Query {
 	r := m.Registry()
 	if r == nil {
 		return &Query{}
 	}
-
-	// Backref van huisarts terug naar patient
-	// SELECT * FROM patient_data WHERE patient_huisarts = '<huisarts_pk>'
-	// patient_huisarts is fk van patient die verwijst naar huisarts.
-	q := r.Query(br).FromSql(`SELECT * FROM patient_data WHERE %s = ?`)
-	brModel := r.Model(br)(br)
-	brModel.SetOwner(brModel)
-	brModel.SetRegistry(r)
+	e := r.Entity(br)
+	if e == nil {
+		return &Query{}
+	}
+	var fk string
+	if len(fks) > 0 {
+		fk = fks[0]
+	} else {
+		fk = fmt.Sprintf("%s_%s", br, m.Name())
+	}
+	key := m.Key()
+	if key == nil {
+		return &Query{}
+	}
+	q := r.Query(br).Filter(e.Col(fk).Eq(key.Get()))
 
 	return q
 }
@@ -191,14 +217,8 @@ func (m *Model) Scan(rows *sql.Rows) {
 		belongs := true
 		// if the model is registered, only use the fields that belong to this model.
 		if entity != nil {
-			//			if entity.Name == "patient_data" {
-			//				fmt.Println("Model.Scan(), veld:", columns[i])
-			//			}
 			field := entity.Fields[columns[i]]
 			if field == nil {
-				if entity.Name == "patient_data" {
-					fmt.Println("Veld hoort niet bij het model.")
-				}
 				belongs = false
 			}
 		}
