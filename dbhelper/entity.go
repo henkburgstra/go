@@ -60,11 +60,8 @@ func (e *Entity) KeyCount() int {
 
 func (e *Entity) Col(name string) *Selectable {
 	if e.registry == nil {
-		fmt.Println("entity.Col(), registry == nil")
+		return &Selectable{Entity: e, Field: name}
 	}
-	fmt.Println("entity.Col(), entity.Name: ", e.Name)
-	model := e.registry.TrimTableAffixes(e.Name)
-	fmt.Println("entity.Col(), model: ", model)
 	return &Selectable{Entity: e,
 		Field: e.TranslateModelField(e.registry.TrimTableAffixes(e.Name), name)}
 }

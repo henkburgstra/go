@@ -122,7 +122,6 @@ func (q *Query) processSelectable(s *Selectable) string {
 		}
 		return fmt.Sprintf("%s.%s %s (%s)", s.Entity.Name, s.Field, s.Param.Operator, strings.Join(l, ", "))
 	} else {
-		fmt.Println("processSelectable(), append param: ", s.Param.Value)
 		q.params = append(q.params, s.Param.Value)
 		return fmt.Sprintf("%s.%s %s ?", s.Entity.Name, s.Field, s.Param.Operator)
 	}
@@ -244,10 +243,6 @@ func (q *Query) All() []IModel {
 		fmt.Println("Query.All(), db err")
 		return models
 	}
-	for i, param := range q.params {
-		fmt.Println("Query.All() param ", i, ": ", param)
-	}
-	fmt.Println("Query.All() lengte params: ", len(q.params))
 	rows, err := db.Query(q.Sql(), q.params...)
 	if err != nil {
 		// TODO: log err

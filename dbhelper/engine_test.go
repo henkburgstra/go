@@ -7,7 +7,11 @@ import (
 )
 
 func makeEngine() *Engine {
-	return &Engine{Driver: "mysql", User: "root", Password: "borland", Database: "amersfoort2"}
+	e := NewEngine(MysqlDriver)
+	e.SetUser("root")
+	e.SetPassword("borland")
+	e.SetDatabase("amersfoort2")
+	return e
 }
 
 func TestConnect(t *testing.T) {
@@ -71,6 +75,7 @@ func TestRef(t *testing.T) {
 }
 
 func TestBackRef(t *testing.T) {
+	_ = "breakpoint"
 	engine := makeEngine()
 	db, err := engine.Connect()
 	if err != nil {

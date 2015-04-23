@@ -2,154 +2,119 @@ package dbhelper
 
 import (
 	"database/sql"
-	"fmt"
+	//	"fmt"
 )
+
+type IEngineDriver interface {
+	Name() string
+	Version() string
+	ConnectionString(*Engine) string
+	TableNames(*Engine) []string
+	TableStructure(engine *Engine, name string, entity *Entity)
+	LoadRelationships(e *Engine, registry *Registry)
+}
 
 type Engine struct {
 	db        *sql.DB
-	Driver    string
-	Host      string
-	Port      string
-	Database  string
-	User      string
-	Password  string
-	Connected bool
+	driver    IEngineDriver
+	host      string
+	port      int
+	database  string
+	user      string
+	password  string
+	connected bool
 }
 
-func (engine *Engine) ConnectionString() string {
-	switch engine.Driver {
-	case "sqlite3":
-		return engine.Database
-	case "mysql":
-		return fmt.Sprintf("%s:%s@/%s", engine.User, engine.Password, engine.Database)
-		//return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
-		//	engine.User, engine.Password, engine.Host, engine.Port, engine.Database)
-	case "mssql":
-		return fmt.Sprintf("server=%s;user id=%s;password=%s;database=%s;encrypt=disable",
-			engine.Host, engine.User, engine.Password, engine.Database)
-	default:
-		return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
-			engine.User, engine.Password, engine.Host, engine.Port, engine.Database)
-	}
+func NewEngine(d IEngineDriver) *Engine {
+	e := new(Engine)
+	e.driver = d
+	return e
 }
 
-func (engine *Engine) Connect() (*sql.DB, error) {
-	db, err := sql.Open(engine.Driver, engine.ConnectionString())
+func (e *Engine) Db() *sql.DB {
+	return e.db
+}
+
+func (e *Engine) Driver() IEngineDriver {
+	return e.driver
+}
+
+func (e *Engine) SetHost(h string) {
+	e.host = h
+}
+
+func (e *Engine) Host() string {
+	return e.host
+}
+
+func (e *Engine) SetPort(p int) {
+	e.port = p
+}
+
+func (e *Engine) Port() int {
+	return e.port
+}
+
+func (e *Engine) SetDatabase(d string) {
+	e.database = d
+}
+
+func (e *Engine) Database() string {
+	return e.database
+}
+
+func (e *Engine) SetUser(u string) {
+	e.user = u
+}
+
+func (e *Engine) User() string {
+	return e.user
+}
+
+func (e *Engine) SetPassword(p string) {
+	e.password = p
+}
+
+func (e *Engine) Password() string {
+	return e.password
+}
+
+//func (engine *Engine) ConnectionString() string {
+//	switch engine.Driver {
+//	case "sqlite3":
+//		return engine.Database
+//	case "mysql":
+//		return fmt.Sprintf("%s:%s@/%s", engine.User, engine.Password, engine.Database)
+//		//return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
+//		//	engine.User, engine.Password, engine.Host, engine.Port, engine.Database)
+//	case "mssql":
+//		return fmt.Sprintf("server=%s;user id=%s;password=%s;database=%s;encrypt=disable",
+//			engine.Host, engine.User, engine.Password, engine.Database)
+//	default:
+//		return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s",
+//			engine.User, engine.Password, engine.Host, engine.Port, engine.Database)
+//	}
+//}
+
+func (e *Engine) Connect() (*sql.DB, error) {
+	db, err := sql.Open(e.driver.Name(), e.driver.ConnectionString(e))
 	if err == nil {
-		engine.db = db
-		engine.Connected = true
+		e.db = db
+		e.connected = true
 	}
 	return db, err
 }
 
-func (engine *Engine) Db() *sql.DB {
-	return engine.db
+func (e *Engine) LoadRelationships(registry *Registry) {
+	e.driver.LoadRelationships(e, registry)
 }
 
-func (engine *Engine) mysqlTableNames() []string {
-	names := make([]string, 0)
-	rows, err := engine.db.Query(`SHOW TABLES`)
-
-	if err != nil {
-		return names
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var name string
-		err := rows.Scan(&name)
-		if err != nil {
-			return names
-		}
-		names = append(names, name)
-	}
-	return names
+func (e *Engine) TableNames() []string {
+	return e.driver.TableNames(e)
 }
 
-func (engine *Engine) mysqlTableStructure(name string, entity *Entity) {
-	rows, err := engine.db.Query(fmt.Sprintf("DESCRIBE %s", name))
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		ts := NewModel("fieldstructure")
-		ts.Scan(rows)
-		f := &EntityField{
-			Name:    ts.Field("Field").String(),
-			Type:    ts.Field("Type").String(),
-			Length:  0, // TODO: lengte distilleren uit het type (varchar(8))
-			Key:     ts.Field("Key").String() == "PRI",
-			Null:    ts.Field("Null").String() == "YES",
-			Default: ts.Field("Default").String(),
-		}
-		entity.Fields[f.Name] = f
-	}
-}
-
-func (engine *Engine) mysqlRelationships(registry *Registry) {
-	rows, err := engine.db.Query(`
-		SELECT rc.CONSTRAINT_NAME AS ConstraintName, 
-		rc.TABLE_NAME AS TableName, kc.COLUMN_NAME AS ColumnName, 
-		rc.REFERENCED_TABLE_NAME AS ReferencedTableName, 
-		kc.REFERENCED_COLUMN_NAME AS ReferencedColumnName, 
-		rc.UPDATE_RULE AS UpdateRule, rc.DELETE_RULE AS DeleteRule 
-		FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS AS rc
-		JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE AS kc
-		ON rc.CONSTRAINT_NAME = kc.CONSTRAINT_NAME
-		WHERE rc.CONSTRAINT_SCHEMA = ?
-		ORDER BY rc.TABLE_NAME, kc.COLUMN_NAME`, engine.Database)
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-	defer rows.Close()
-	for rows.Next() {
-		m := NewModel("relationship")
-		m.Scan(rows)
-		r := EntityRelationship{
-			ForeignKey:       m.Field("ColumnName").String(),
-			ReferencedTable:  m.Field("ReferencedTableName").String(),
-			ReferencedColumn: m.Field("ReferencedColumnName").String(),
-		}
-		entity := registry.Entity(registry.TrimTableAffixes(m.Field("TableName").String()))
-		if entity != nil {
-			entity.AddRelationship(r)
-		}
-	}
-}
-
-func (engine *Engine) LoadRelationships(registry *Registry) {
-	switch engine.Driver {
-	case "mysql":
-		engine.mysqlRelationships(registry)
-	}
-}
-
-func (engine *Engine) TableNames() []string {
-	names := make([]string, 0)
-	if engine.db == nil {
-		return names
-	}
-
-	switch engine.Driver {
-	case "mysql":
-		names = engine.mysqlTableNames()
-	}
-
-	return names
-}
-
-func (engine *Engine) TableStructure(name string) *Entity {
+func (e *Engine) TableStructure(name string) *Entity {
 	entity := NewEntity(name)
-
-	if engine.db == nil {
-		return entity
-	}
-
-	switch engine.Driver {
-	case "mysql":
-		engine.mysqlTableStructure(name, entity)
-	}
+	e.driver.TableStructure(e, name, entity)
 	return entity
 }

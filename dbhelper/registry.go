@@ -57,7 +57,7 @@ func (r *Registry) RegisterModel(name string, model ModelConstructor) {
 }
 
 func (r *Registry) Engine() (*Engine, error) {
-	if r.engine.Connected {
+	if r.engine.connected {
 		return r.engine, nil
 	}
 	_, err := r.engine.Connect()
